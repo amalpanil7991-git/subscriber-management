@@ -28,7 +28,7 @@ useEffect(() => {
     // Sample data for first-time users
     const sampleData = [
       { id: 1, name: 'Rajesh Kumar', phone: '9876543210', area: 'Sector A', address: 'House 101', monthlyFee: 500, connectionDate: '2024-01-15', status: 'active' },
-      { id: 2, name: 'Priya Sharma', phone: '9876543211', area: 'Sector B', address: 'Flat 202', monthlyFee: 750, connectionDate: '2024-02-20', status: 'active' },
+      { id: 2, name: 'Priya RS', phone: '9876543211', area: 'Sector B', address: 'Flat 202', monthlyFee: 750, connectionDate: '2024-02-20', status: 'active' },
       { id: 3, name: 'Amir Khan', phone: '9876543212', area: 'Sector A', address: 'House 305', monthlyFee: 1000, connectionDate: '2024-03-10', status: 'inactive' },
     ];
     setSubscribers(sampleData);

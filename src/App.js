@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2, Users, DollarSign, MapPin } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 function App() {
   const [subscribers, setSubscribers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -14,57 +16,77 @@ function App() {
     phone: '',
     area: '',
     address: '',
-    monthlyFee: '',
-    connectionDate: '',
+    monthly_fee: '',
+    connection_date: '',
     status: 'active'
   });
 
-// Load data from localStorage on mount
-useEffect(() => {
-  const saved = localStorage.getItem('subscribers');
-  if (saved) {
-    setSubscribers(JSON.parse(saved));
-  } else {
-    // Sample data for first-time users
-    const sampleData = [
-      { id: 1, name: 'Rajesh Kumar', phone: '9876543210', area: 'Sector A', address: 'House 101', monthlyFee: 500, connectionDate: '2024-01-15', status: 'active' },
-      { id: 2, name: 'Priya Rajeev', phone: '9876543211', area: 'Sector B', address: 'Flat 202', monthlyFee: 750, connectionDate: '2024-02-20', status: 'active' },
-      { id: 3, name: 'Amir Khan', phone: '9876543212', area: 'Sector A', address: 'House 305', monthlyFee: 1000, connectionDate: '2024-03-10', status: 'inactive' },
-    ];
-    setSubscribers(sampleData);
-    localStorage.setItem('subscribers', JSON.stringify(sampleData));
-  }
-}, []);
+  // Load subscribers from Supabase
+  useEffect(() => {
+    fetchSubscribers();
+  }, []);
 
-// Save to localStorage whenever subscribers change
-useEffect(() => {
-  if (subscribers.length > 0) {
-    localStorage.setItem('subscribers', JSON.stringify(subscribers));
-  }
-}, [subscribers]);
+  const fetchSubscribers = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('subscribers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSubscribers(data || []);
+    } catch (error) {
+      console.error('Error fetching subscribers:', error.message);
+      alert('Error loading subscribers: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const areas = ['all', ...new Set(subscribers.map(s => s.area))];
 
-  const handleSubmit = () => {
-    if (!formData.name || !formData.phone || !formData.area || !formData.address || !formData.monthlyFee || !formData.connectionDate) {
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.phone || !formData.area || !formData.address || !formData.monthly_fee || !formData.connection_date) {
       alert('Please fill all required fields');
       return;
     }
 
-    if (editingId) {
-      setSubscribers(subscribers.map(s =>
-        s.id === editingId ? { ...formData, id: editingId } : s
-      ));
-      setEditingId(null);
-    } else {
-      const newSubscriber = {
-        ...formData,
-        id: Date.now(),
-        monthlyFee: parseFloat(formData.monthlyFee)
-      };
-      setSubscribers([...subscribers, newSubscriber]);
+    try {
+      if (editingId) {
+        // Update existing subscriber
+        const { error } = await supabase
+          .from('subscribers')
+          .update({
+            ...formData,
+            monthly_fee: parseFloat(formData.monthly_fee),
+            last_edited_at: new Date().toISOString(),
+            last_edited_by: 'user@example.com' // TODO: Replace with actual user email
+          })
+          .eq('id', editingId);
+
+        if (error) throw error;
+        alert('Subscriber updated successfully!');
+      } else {
+        // Add new subscriber
+        const { error } = await supabase
+          .from('subscribers')
+          .insert([{
+            ...formData,
+            monthly_fee: parseFloat(formData.monthly_fee),
+            created_by: 'user@example.com' // TODO: Replace with actual user email
+          }]);
+
+        if (error) throw error;
+        alert('Subscriber added successfully!');
+      }
+
+      fetchSubscribers();
+      resetForm();
+    } catch (error) {
+      console.error('Error saving subscriber:', error.message);
+      alert('Error saving subscriber: ' + error.message);
     }
-    resetForm();
   };
 
   const resetForm = () => {
@@ -73,8 +95,8 @@ useEffect(() => {
       phone: '',
       area: '',
       address: '',
-      monthlyFee: '',
-      connectionDate: '',
+      monthly_fee: '',
+      connection_date: '',
       status: 'active'
     });
     setShowForm(false);
@@ -82,14 +104,37 @@ useEffect(() => {
   };
 
   const handleEdit = (subscriber) => {
-    setFormData(subscriber);
+    setFormData({
+      name: subscriber.name,
+      phone: subscriber.phone,
+      area: subscriber.area,
+      address: subscriber.address,
+      monthly_fee: subscriber.monthly_fee,
+      connection_date: subscriber.connection_date,
+      status: subscriber.status
+    });
     setEditingId(subscriber.id);
     setShowForm(true);
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Are you sure you want to delete this subscriber?')) {
-      setSubscribers(subscribers.filter(s => s.id !== id));
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this subscriber?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('subscribers')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      alert('Subscriber deleted successfully!');
+      fetchSubscribers();
+    } catch (error) {
+      console.error('Error deleting subscriber:', error.message);
+      alert('Error deleting subscriber: ' + error.message);
     }
   };
 
@@ -99,25 +144,36 @@ useEffect(() => {
                          sub.address.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesArea = filterArea === 'all' || sub.area === filterArea;
     const matchesFee = filterFeeRange === 'all' ||
-                       (filterFeeRange === 'low' && sub.monthlyFee < 600) ||
-                       (filterFeeRange === 'medium' && sub.monthlyFee >= 600 && sub.monthlyFee < 900) ||
-                       (filterFeeRange === 'high' && sub.monthlyFee >= 900);
+                       (filterFeeRange === 'low' && sub.monthly_fee < 600) ||
+                       (filterFeeRange === 'medium' && sub.monthly_fee >= 600 && sub.monthly_fee < 900) ||
+                       (filterFeeRange === 'high' && sub.monthly_fee >= 900);
     return matchesSearch && matchesArea && matchesFee;
   });
 
   const stats = {
     total: subscribers.length,
     active: subscribers.filter(s => s.status === 'active').length,
-    totalRevenue: subscribers.filter(s => s.status === 'active').reduce((sum, s) => sum + s.monthlyFee, 0)
+    totalRevenue: subscribers.filter(s => s.status === 'active').reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0)
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-800 mb-2">Loading...</div>
+          <div className="text-gray-600">Fetching subscriber data</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">My Broadband Business</h1>
-          <p className="text-gray-600">Manage your local area broadband customers</p>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">Cable Subscriber Management</h1>
+          <p className="text-gray-600">Manage your local area broadband customers - Powered by Supabase</p>
         </div>
 
         {/* Stats Cards */}
@@ -144,7 +200,7 @@ useEffect(() => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm">Monthly Revenue</p>
-                <p className="text-3xl font-bold text-purple-600">₹{stats.totalRevenue}</p>
+                <p className="text-3xl font-bold text-purple-600">₹{stats.totalRevenue.toFixed(2)}</p>
               </div>
               <DollarSign className="text-purple-500" size={40} />
             </div>
@@ -198,7 +254,7 @@ useEffect(() => {
         <div className="mb-6">
           <button
             onClick={() => setShowForm(!showForm)}
-            className="bg-green-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus size={20} />
             Add New Subscriber
@@ -252,8 +308,8 @@ useEffect(() => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee (₹) *</label>
                 <input
                   type="number"
-                  value={formData.monthlyFee}
-                  onChange={(e) => setFormData({...formData, monthlyFee: e.target.value})}
+                  value={formData.monthly_fee}
+                  onChange={(e) => setFormData({...formData, monthly_fee: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -261,8 +317,8 @@ useEffect(() => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Connection Date *</label>
                 <input
                   type="date"
-                  value={formData.connectionDate}
-                  onChange={(e) => setFormData({...formData, connectionDate: e.target.value})}
+                  value={formData.connection_date}
+                  onChange={(e) => setFormData({...formData, connection_date: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -329,7 +385,7 @@ useEffect(() => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{subscriber.address}</td>
-                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{subscriber.monthlyFee}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{subscriber.monthly_fee}</td>
                       <td className="px-6 py-4 text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                           subscriber.status === 'active'

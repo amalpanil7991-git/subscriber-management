@@ -1,13 +1,7 @@
+Make a note of it!
+
 import React, { useState, useEffect } from 'react';
-import {
-  Search,
-  Plus,
-  Edit2,
-  Trash2,
-  Users,
-  IndianRupee,
-  MapPin
-} from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Users, DollarSign, MapPin } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 function App() {
@@ -26,10 +20,10 @@ function App() {
     address: '',
     monthly_fee: '',
     connection_date: '',
-    service_provider: '',
     status: 'active'
   });
 
+  // Load subscribers from Supabase
   useEffect(() => {
     fetchSubscribers();
   }, []);
@@ -45,6 +39,7 @@ function App() {
       if (error) throw error;
       setSubscribers(data || []);
     } catch (error) {
+      console.error('Error fetching subscribers:', error.message);
       alert('Error loading subscribers: ' + error.message);
     } finally {
       setLoading(false);
@@ -54,57 +49,44 @@ function App() {
   const areas = ['all', ...new Set(subscribers.map(s => s.area))];
 
   const handleSubmit = async () => {
-    // Required fields
-    if (
-      !formData.name ||
-      !formData.phone ||
-      !formData.area ||
-      !formData.address ||
-      !formData.monthly_fee ||
-      !formData.connection_date ||
-      !formData.service_provider
-    ) {
+    if (!formData.name || !formData.phone || !formData.area || !formData.address || !formData.monthly_fee || !formData.connection_date) {
       alert('Please fill all required fields');
-      return;
-    }
-
-    // ✅ 10-digit mobile validation
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(formData.phone)) {
-      alert('Mobile number must be exactly 10 digits');
       return;
     }
 
     try {
       if (editingId) {
+        // Update existing subscriber
         const { error } = await supabase
           .from('subscribers')
           .update({
             ...formData,
             monthly_fee: parseFloat(formData.monthly_fee),
-            last_edited_at: new Date().toISOString()
+            last_edited_at: new Date().toISOString(),
+            last_edited_by: 'user@example.com' // TODO: Replace with actual user email
           })
           .eq('id', editingId);
 
         if (error) throw error;
-        alert('Subscriber updated successfully');
+        alert('Subscriber updated successfully!');
       } else {
+        // Add new subscriber
         const { error } = await supabase
           .from('subscribers')
-          .insert([
-            {
-              ...formData,
-              monthly_fee: parseFloat(formData.monthly_fee)
-            }
-          ]);
+          .insert([{
+            ...formData,
+            monthly_fee: parseFloat(formData.monthly_fee),
+            created_by: 'user@example.com' // TODO: Replace with actual user email
+          }]);
 
         if (error) throw error;
-        alert('Subscriber added successfully');
+        alert('Subscriber added successfully!');
       }
 
       fetchSubscribers();
       resetForm();
     } catch (error) {
+      console.error('Error saving subscriber:', error.message);
       alert('Error saving subscriber: ' + error.message);
     }
   };
@@ -117,7 +99,6 @@ function App() {
       address: '',
       monthly_fee: '',
       connection_date: '',
-      service_provider: '',
       status: 'active'
     });
     setShowForm(false);
@@ -125,156 +106,323 @@ function App() {
   };
 
   const handleEdit = (subscriber) => {
-    setFormData({ ...subscriber });
+    setFormData({
+      name: subscriber.name,
+      phone: subscriber.phone,
+      area: subscriber.area,
+      address: subscriber.address,
+      monthly_fee: subscriber.monthly_fee,
+      connection_date: subscriber.connection_date,
+      status: subscriber.status
+    });
     setEditingId(subscriber.id);
     setShowForm(true);
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this subscriber?')) return;
+    if (!window.confirm('Are you sure you want to delete this subscriber?')) {
+      return;
+    }
 
-    const { error } = await supabase
-      .from('subscribers')
-      .delete()
-      .eq('id', id);
+    try {
+      const { error } = await supabase
+        .from('subscribers')
+        .delete()
+        .eq('id', id);
 
-    if (!error) fetchSubscribers();
+      if (error) throw error;
+
+      alert('Subscriber deleted successfully!');
+      fetchSubscribers();
+    } catch (error) {
+      console.error('Error deleting subscriber:', error.message);
+      alert('Error deleting subscriber: ' + error.message);
+    }
   };
 
   const filteredSubscribers = subscribers.filter(sub => {
-    const matchesSearch =
-      sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sub.phone.includes(searchTerm) ||
-      sub.address.toLowerCase().includes(searchTerm.toLowerCase());
-
+    const matchesSearch = sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         sub.phone.includes(searchTerm) ||
+                         sub.address.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesArea = filterArea === 'all' || sub.area === filterArea;
-
-    const matchesFee =
-      filterFeeRange === 'all' ||
-      (filterFeeRange === 'low' && sub.monthly_fee < 600) ||
-      (filterFeeRange === 'medium' && sub.monthly_fee >= 600 && sub.monthly_fee < 900) ||
-      (filterFeeRange === 'high' && sub.monthly_fee >= 900);
-
+    const matchesFee = filterFeeRange === 'all' ||
+                       (filterFeeRange === 'low' && sub.monthly_fee < 600) ||
+                       (filterFeeRange === 'medium' && sub.monthly_fee >= 600 && sub.monthly_fee < 900) ||
+                       (filterFeeRange === 'high' && sub.monthly_fee >= 900);
     return matchesSearch && matchesArea && matchesFee;
   });
 
   const stats = {
     total: subscribers.length,
     active: subscribers.filter(s => s.status === 'active').length,
-    totalRevenue: subscribers
-      .filter(s => s.status === 'active')
-      .reduce((sum, s) => sum + Number(s.monthly_fee || 0), 0)
+    totalRevenue: subscribers.filter(s => s.status === 'active').reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0)
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-800 mb-2">Loading...</div>
+          <div className="text-gray-600">Fetching subscriber data</div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Cable Subscriber Management</h1>
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">Cable Subscriber Management</h1>
+          <p className="text-gray-600">Manage your local area broadband customers - Powered by Think and Break Company</p>
+        </div>
 
-        {/* Stats */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white p-6 rounded-lg shadow">
-            <p>Total Subscribers</p>
-            <p className="text-3xl font-bold">{stats.total}</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <p>Active Subscribers</p>
-            <p className="text-3xl font-bold text-green-600">{stats.active}</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow flex justify-between">
-            <div>
-              <p>Monthly Revenue</p>
-              <p className="text-3xl font-bold text-purple-600">
-                ₹{stats.totalRevenue.toFixed(2)}
-              </p>
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-600 text-sm">Total Subscribers</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.total}</p>
+              </div>
+              <Users className="text-blue-500" size={40} />
             </div>
-            <IndianRupee size={40} className="text-purple-500" />
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-600 text-sm">Active Subscribers</p>
+                <p className="text-3xl font-bold text-green-600">{stats.active}</p>
+              </div>
+              <Users className="text-green-500" size={40} />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-600 text-sm">Monthly Revenue</p>
+                <p className="text-3xl font-bold text-purple-600">₹{stats.totalRevenue.toFixed(2)}</p>
+              </div>
+              <DollarSign className="text-purple-500" size={40} />
+            </div>
+          </div>
+        </div>
+
+        {/* Filters and Search */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 text-gray-400" size={20} />
+                <input
+                  type="text"
+                  placeholder="Search by name, phone, or address..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div>
+              <select
+                value={filterArea}
+                onChange={(e) => setFilterArea(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {areas.map(area => (
+                  <option key={area} value={area}>
+                    {area === 'all' ? 'All Areas' : area}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <select
+                value={filterFeeRange}
+                onChange={(e) => setFilterFeeRange(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Plans</option>
+                <option value="low">Budget (&lt; ₹600)</option>
+                <option value="medium">Standard (₹600-900)</option>
+                <option value="high">Premium (₹900+)</option>
+              </select>
+            </div>
           </div>
         </div>
 
         {/* Add Button */}
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-blue-600 text-white px-6 py-3 rounded mb-6 flex items-center gap-2"
-        >
-          <Plus size={18} /> Add Subscriber
-        </button>
+        <div className="mb-6">
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Plus size={20} />
+            Add New Subscriber
+          </button>
+        </div>
 
-        {/* Form */}
+        {/* Add/Edit Form */}
         {showForm && (
-          <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">
+              {editingId ? 'Edit Subscriber' : 'Add New Subscriber'}
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input placeholder="Name" value={formData.name}
-                onChange={e => setFormData({ ...formData, name: e.target.value })} />
-              <input placeholder="Phone" value={formData.phone}
-                onChange={e => setFormData({ ...formData, phone: e.target.value })} />
-              <input placeholder="Area" value={formData.area}
-                onChange={e => setFormData({ ...formData, area: e.target.value })} />
-              <input placeholder="Address" value={formData.address}
-                onChange={e => setFormData({ ...formData, address: e.target.value })} />
-              <input type="number" placeholder="Monthly Fee" value={formData.monthly_fee}
-                onChange={e => setFormData({ ...formData, monthly_fee: e.target.value })} />
-              <input type="date" value={formData.connection_date}
-                onChange={e => setFormData({ ...formData, connection_date: e.target.value })} />
-
-              <select
-                value={formData.service_provider}
-                onChange={e => setFormData({ ...formData, service_provider: e.target.value })}
-              >
-                <option value="">Select Provider</option>
-                <option value="Asianet">Asianet</option>
-                <option value="KCCL">KCCL</option>
-                <option value="BSNL">BSNL</option>
-                <option value="KFoN">KFoN</option>
-              </select>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Area *</label>
+                <input
+                  type="text"
+                  value={formData.area}
+                  onChange={(e) => setFormData({...formData, area: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee (₹) *</label>
+                <input
+                  type="number"
+                  value={formData.monthly_fee}
+                  onChange={(e) => setFormData({...formData, monthly_fee: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Connection Date *</label>
+                <input
+                  type="date"
+                  value={formData.connection_date}
+                  onChange={(e) => setFormData({...formData, connection_date: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({...formData, status: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
             </div>
-
-            <div className="mt-4 flex gap-3">
-              <button onClick={handleSubmit} className="bg-blue-600 text-white px-6 py-2 rounded">
-                {editingId ? 'Update' : 'Add'}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSubmit}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
+              >
+                {editingId ? 'Update' : 'Add'} Subscriber
               </button>
-              <button onClick={resetForm} className="bg-gray-300 px-6 py-2 rounded">
+              <button
+                onClick={resetForm}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-2 rounded-lg transition-colors"
+              >
                 Cancel
               </button>
             </div>
           </div>
         )}
 
-        {/* Table */}
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-100">
-              <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Area</th>
-                <th>Provider</th>
-                <th>Fee</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSubscribers.map(sub => (
-                <tr key={sub.id}>
-                  <td>{sub.name}</td>
-                  <td>{sub.phone}</td>
-                  <td>{sub.area}</td>
-                  <td>{sub.service_provider}</td>
-                  <td>₹{sub.monthly_fee}</td>
-                  <td>{sub.status}</td>
-                  <td>
-                    <button onClick={() => handleEdit(sub)}><Edit2 size={16} /></button>
-                    <button onClick={() => handleDelete(sub.id)}><Trash2 size={16} /></button>
-                  </td>
+        {/* Subscribers List */}
+        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monthly Fee</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredSubscribers.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                      No subscribers found. Add your first subscriber to get started!
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSubscribers.map(subscriber => (
+                    <tr key={subscriber.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{subscriber.name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{subscriber.phone}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-1">
+                          <MapPin size={14} className="text-gray-400" />
+                          {subscriber.area}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{subscriber.address}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{subscriber.monthly_fee}</td>
+                      <td className="px-6 py-4 text-sm">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          subscriber.status === 'active'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {subscriber.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEdit(subscriber)}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(subscriber.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-6 text-center text-sm text-gray-500">
+          Showing {filteredSubscribers.length} of {subscribers.length} subscribers
         </div>
       </div>
     </div>
@@ -282,3 +430,5 @@ function App() {
 }
 
 export default App;
+
+

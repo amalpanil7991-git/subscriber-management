@@ -1,5 +1,3 @@
-Make a note of it!
-
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2, Users, DollarSign, MapPin } from 'lucide-react';
 import { supabase } from './supabaseClient';
@@ -430,5 +428,3 @@ function App() {
 }
 
 export default App;
-
-

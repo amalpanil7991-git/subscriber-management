@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Edit2, Trash2, Users, DollarSign, MapPin } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Users, IndianRupee, MapPin } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 function App() {
@@ -11,15 +11,17 @@ function App() {
   const [filterArea, setFilterArea] = useState('all');
   const [filterFeeRange, setFilterFeeRange] = useState('all');
 
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    area: '',
-    address: '',
-    monthly_fee: '',
-    connection_date: '',
-    status: 'active'
-  });
+const [formData, setFormData] = useState({
+  name: '',
+  phone: '',
+  area: '',
+  address: '',
+  monthly_fee: '',
+  connection_date: '',
+  service_provider: '',
+  status: 'active'
+});
+
 
   // Load subscribers from Supabase
   useEffect(() => {
@@ -47,11 +49,29 @@ function App() {
   const areas = ['all', ...new Set(subscribers.map(s => s.area))];
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.phone || !formData.area || !formData.address || !formData.monthly_fee || !formData.connection_date) {
-      alert('Please fill all required fields');
-      return;
-    }
+// Basic required field validation
+if (
+  !formData.name ||
+  !formData.phone ||
+  !formData.area ||
+  !formData.address ||
+  !formData.monthly_fee ||
+  !formData.connection_date
+) {
+  alert('Please fill all required fields');
+  return;
+}
 
+// ✅ 10-digit mobile number validation
+const phoneRegex = /^[0-9]{10}$/;
+if (!phoneRegex.test(formData.phone)) {
+  alert('Mobile number must be exactly 10 digits');
+  return;
+}
+if (!formData.service_provider) {
+  alert('Please select a service provider');
+  return;
+}
     try {
       if (editingId) {
         // Update existing subscriber
@@ -202,7 +222,7 @@ function App() {
                 <p className="text-gray-600 text-sm">Monthly Revenue</p>
                 <p className="text-3xl font-bold text-purple-600">₹{stats.totalRevenue.toFixed(2)}</p>
               </div>
-              <DollarSign className="text-purple-500" size={40} />
+              <IndianRupee className="text-purple-500" size={40} />
             </div>
           </div>
         </div>
@@ -305,6 +325,25 @@ function App() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Service Provider *
+                </label>
+                <select
+                  value={formData.service_provider}
+                  onChange={(e) =>
+                    setFormData({ ...formData, service_provider: e.target.value })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select provider</option>
+                  <option value="Asianet">Asianet</option>
+                  <option value="KCCL">KCCL</option>
+                  <option value="BSNL">BSNL</option>
+                  <option value="KFoN">KFoN</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee (₹) *</label>
                 <input
                   type="number"
@@ -361,6 +400,7 @@ function App() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monthly Fee</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -385,6 +425,7 @@ function App() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{subscriber.address}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600"> {subscriber.service_provider}</td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{subscriber.monthly_fee}</td>
                       <td className="px-6 py-4 text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${

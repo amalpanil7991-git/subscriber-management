@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit2, Trash2, Users, IndianRupee, MapPin } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import * as XLSX from 'xlsx';
 
 function App() {
   const [subscribers, setSubscribers] = useState([]);
@@ -158,6 +159,89 @@ if (!formData.service_provider) {
     }
   };
 
+const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      // Parse Excel file
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      console.log('📊 Parsed Excel data:', jsonData);
+
+      // Transform and validate data
+      const subscribers = jsonData.map((row, index) => {
+        // Support different column name formats (case-insensitive)
+        const name = row.Name || row.name || row.NAME || '';
+        const phone = String(row.Phone || row.phone || row.PHONE || '');
+        const area = row.Area || row.area || row.AREA || '';
+        const address = row.Address || row.address || row.ADDRESS || '';
+        const monthly_fee = parseFloat(
+          row['Monthly Fee'] ||
+          row.monthly_fee ||
+          row.MONTHLY_FEE ||
+          row.Fee ||
+          row.fee ||
+          0
+        );
+        const connection_date = row['Connection Date'] ||
+                               row.connection_date ||
+                               row.CONNECTION_DATE ||
+                               row.Date ||
+                               new Date().toISOString().split('T')[0];
+        const status = (row.Status || row.status || row.STATUS || 'active').toLowerCase();
+
+        // Validate required fields
+        if (!name || !phone || !area || !address) {
+          console.warn(`⚠️ Row ${index + 2} skipped: missing required fields`, row);
+          return null;
+        }
+
+        return {
+          name: name.trim(),
+          phone: phone.trim(),
+          area: area.trim(),
+          address: address.trim(),
+          monthly_fee,
+          connection_date,
+          status: status === 'active' || status === 'inactive' ? status : 'active',
+          created_by: 'excel_import'
+        };
+      }).filter(Boolean); // Remove null entries
+
+      if (subscribers.length === 0) {
+        alert('❌ No valid data found in Excel file. Please check the format.');
+        return;
+      }
+
+      console.log(`✅ Validated ${subscribers.length} subscribers for import`);
+
+      // Insert into Supabase
+      const { data, error } = await supabase
+        .from('subscribers')
+        .insert(subscribers);
+
+      if (error) throw error;
+
+      alert(`✅ Successfully imported ${subscribers.length} subscribers!`);
+      fetchSubscribers(); // Refresh the list
+
+      // Reset file input
+      e.target.value = '';
+    } catch (error) {
+      console.error('❌ Error importing Excel:', error);
+      alert('❌ Error importing Excel file: ' + error.message);
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+};
   const filteredSubscribers = subscribers.filter(sub => {
     const matchesSearch = sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          sub.phone.includes(searchTerm) ||
@@ -270,16 +354,44 @@ if (!formData.service_provider) {
           </div>
         </div>
 
-        {/* Add Button */}
-        <div className="mb-6">
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
-          >
-            <Plus size={20} />
-            Add New Subscriber
-          </button>
-        </div>
+{/* Add and Import Buttons */}
+<div className="mb-6 flex gap-4 flex-wrap">
+  <button
+    onClick={() => setShowForm(!showForm)}
+    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+  >
+    <Plus size={20} />
+    Add New Subscriber
+  </button>
+
+  <label className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors cursor-pointer">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="17 8 12 3 7 8"></polyline>
+      <line x1="12" y1="3" x2="12" y2="15"></line>
+    </svg>
+    Import from Excel
+    <input
+      type="file"
+      accept=".xlsx,.xls"
+      onChange={handleFileUpload}
+      className="hidden"
+    />
+  </label>
+
+
+    href="data:text/csv;charset=utf-8,Name,Phone,Area,Address,Monthly Fee,Connection Date,Status%0ARajesh Kumar,9876543210,Sector A,House 101,500,2024-01-15,active%0APriya Sharma,9876543211,Sector B,Flat 202,750,2024-02-20,active"
+    download="subscriber_template.csv"
+    className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="7 10 12 15 17 10"></polyline>
+      <line x1="12" y1="15" x2="12" y2="3"></line>
+    </svg>
+    Download Template
+  </a>
+</div>
 
         {/* Add/Edit Form */}
         {showForm && (

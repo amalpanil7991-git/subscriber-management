@@ -12,17 +12,15 @@ function App() {
   const [filterArea, setFilterArea] = useState('all');
   const [filterFeeRange, setFilterFeeRange] = useState('all');
 
-const [formData, setFormData] = useState({
-  name: '',
-  phone: '',
-  area: '',
-  address: '',
-  monthly_fee: '',
-  connection_date: '',
-  service_provider: '',
-  status: 'active'
-});
-
+  const [formData, setFormData] = useState({
+    subscriber_code: '',
+    name: '',
+    mobile: '',
+    area: '',
+    service: '',
+    monthly_fee: '',
+    status: 'active'
+  });
 
   // Load subscribers from Supabase
   useEffect(() => {
@@ -50,52 +48,66 @@ const [formData, setFormData] = useState({
   const areas = ['all', ...new Set(subscribers.map(s => s.area))];
 
   const handleSubmit = async () => {
-// Basic required field validation
-if (
-  !formData.name ||
-  !formData.phone ||
-  !formData.area ||
-  !formData.address ||
-  !formData.monthly_fee ||
-  !formData.connection_date
-) {
-  alert('Please fill all required fields');
-  return;
-}
+    // ✅ FIXED: Correct field names
+    if (!formData.name || !formData.mobile || !formData.area || !formData.service || !formData.monthly_fee) {
+      alert('Please fill all required fields');
+      return;
+    }
 
-// ✅ 10-digit mobile number validation
-const phoneRegex = /^[0-9]{10}$/;
-if (!phoneRegex.test(formData.phone)) {
-  alert('Mobile number must be exactly 10 digits');
-  return;
-}
-if (!formData.service_provider) {
-  alert('Please select a service provider');
-  return;
-}
+    // ✅ FIXED: 10-digit mobile number validation
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(formData.mobile)) {
+      alert('Mobile number must be exactly 10 digits');
+      return;
+    }
+
     try {
+      // ✅ Auto-generate subscriber code if not provided
+      let subscriberCode = formData.subscriber_code;
+
+      if (!subscriberCode) {
+        const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const { count } = await supabase
+          .from('subscribers')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', new Date().toISOString().split('T')[0]);
+
+        const sequence = String((count || 0) + 1).padStart(3, '0');
+        subscriberCode = `SUB-${date}-${sequence}`;
+      }
+
       if (editingId) {
-        // Update existing subscriber
+        // ✅ FIXED: Update with correct field names
         const { error } = await supabase
           .from('subscribers')
           .update({
-            ...formData,
+            subscriber_code: subscriberCode,
+            name: formData.name,
+            mobile: formData.mobile,
+            area: formData.area,
+            service: formData.service,
             monthly_fee: parseFloat(formData.monthly_fee),
+            status: formData.status,
             last_edited_at: new Date().toISOString(),
-            last_edited_by: 'user@example.com' // TODO: Replace with actual user email
+            last_edited_by: 'user@example.com'
           })
           .eq('id', editingId);
 
         if (error) throw error;
         alert('Subscriber updated successfully!');
       } else {
-        // Add new subscriber
+        // ✅ FIXED: Insert with correct field names
         const { error } = await supabase
           .from('subscribers')
           .insert([{
-            ...formData,
+            subscriber_code: subscriberCode,
+            name: formData.name,
+            mobile: formData.mobile,
+            area: formData.area,
+            service: formData.service,
             monthly_fee: parseFloat(formData.monthly_fee),
-            created_by: 'user@example.com' // TODO: Replace with actual user email
+            status: formData.status,
+            created_by: 'user@example.com'
           }]);
 
         if (error) throw error;
@@ -112,12 +124,12 @@ if (!formData.service_provider) {
 
   const resetForm = () => {
     setFormData({
+      subscriber_code: '',
       name: '',
-      phone: '',
+      mobile: '',
       area: '',
-      address: '',
+      service: '',
       monthly_fee: '',
-      connection_date: '',
       status: 'active'
     });
     setShowForm(false);
@@ -126,12 +138,12 @@ if (!formData.service_provider) {
 
   const handleEdit = (subscriber) => {
     setFormData({
+      subscriber_code: subscriber.subscriber_code || '',
       name: subscriber.name,
-      phone: subscriber.phone,
+      mobile: subscriber.mobile,
       area: subscriber.area,
-      address: subscriber.address,
+      service: subscriber.service,
       monthly_fee: subscriber.monthly_fee,
-      connection_date: subscriber.connection_date,
       status: subscriber.status
     });
     setEditingId(subscriber.id);
@@ -159,93 +171,92 @@ if (!formData.service_provider) {
     }
   };
 
-const handleFileUpload = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = async (event) => {
-    try {
-      // Parse Excel file
-      const data = new Uint8Array(event.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        // Parse Excel file
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      console.log('📊 Parsed Excel data:', jsonData);
+        console.log('📊 Parsed Excel data:', jsonData);
 
-      // Transform and validate data
-      const subscribers = jsonData.map((row, index) => {
-        // Support different column name formats (case-insensitive)
-        const name = row.Name || row.name || row.NAME || '';
-        const phone = String(row.Phone || row.phone || row.PHONE || '');
-        const area = row.Area || row.area || row.AREA || '';
-        const address = row.Address || row.address || row.ADDRESS || '';
-        const monthly_fee = parseFloat(
-          row['Monthly Fee'] ||
-          row.monthly_fee ||
-          row.MONTHLY_FEE ||
-          row.Fee ||
-          row.fee ||
-          0
-        );
-        const connection_date = row['Connection Date'] ||
-                               row.connection_date ||
-                               row.CONNECTION_DATE ||
-                               row.Date ||
-                               new Date().toISOString().split('T')[0];
-        const status = (row.Status || row.status || row.STATUS || 'active').toLowerCase();
+        // ✅ FIXED: Transform and validate data with correct field names
+        const subscribers = jsonData.map((row, index) => {
+          const subscriber_code = row['Subscriber Code'] || row.subscriber_code || row.Code || '';
+          const name = row.Name || row.name || row.NAME || '';
+          const mobile = String(row.Mobile || row.mobile || row.MOBILE || row.Phone || row.phone || '');
+          const area = row.Area || row.area || row.AREA || '';
+          const service = row.Service || row.service || row.SERVICE || '';
+          const monthly_fee = parseFloat(
+            row['Monthly Fee'] ||
+            row.monthly_fee ||
+            row.MONTHLY_FEE ||
+            row.Fee ||
+            row.fee ||
+            0
+          );
+          const status = (row.Status || row.status || row.STATUS || 'active').toLowerCase();
 
-        // Validate required fields
-        if (!name || !phone || !area || !address) {
-          console.warn(`⚠️ Row ${index + 2} skipped: missing required fields`, row);
-          return null;
+          // Validate required fields
+          if (!name || !mobile || !area || !service) {
+            console.warn(`⚠️ Row ${index + 2} skipped: missing required fields`, row);
+            return null;
+          }
+
+          const finalCode = subscriber_code || `SUB-IMPORT-${String(index + 1).padStart(3, '0')}`;
+
+          return {
+            subscriber_code: finalCode,
+            name: name.trim(),
+            mobile: mobile.trim(),
+            area: area.trim(),
+            service: service.trim(),
+            monthly_fee,
+            status: ['active', 'inactive', 'suspended'].includes(status) ? status : 'active',
+            created_by: 'excel_import'
+          };
+        }).filter(Boolean);
+
+        if (subscribers.length === 0) {
+          alert('❌ No valid data found in Excel file. Please check the format.');
+          return;
         }
 
-        return {
-          name: name.trim(),
-          phone: phone.trim(),
-          area: area.trim(),
-          address: address.trim(),
-          monthly_fee,
-          connection_date,
-          status: status === 'active' || status === 'inactive' ? status : 'active',
-          created_by: 'excel_import'
-        };
-      }).filter(Boolean); // Remove null entries
+        console.log(`✅ Validated ${subscribers.length} subscribers for import`);
 
-      if (subscribers.length === 0) {
-        alert('❌ No valid data found in Excel file. Please check the format.');
-        return;
+        // Insert into Supabase
+        const { error } = await supabase
+          .from('subscribers')
+          .insert(subscribers);
+
+        if (error) throw error;
+
+        alert(`✅ Successfully imported ${subscribers.length} subscribers!`);
+        fetchSubscribers();
+
+        // Reset file input
+        e.target.value = '';
+      } catch (error) {
+        console.error('❌ Error importing Excel:', error);
+        alert('❌ Error importing Excel file: ' + error.message);
       }
+    };
 
-      console.log(`✅ Validated ${subscribers.length} subscribers for import`);
-
-      // Insert into Supabase
-      const { data, error } = await supabase
-        .from('subscribers')
-        .insert(subscribers);
-
-      if (error) throw error;
-
-      alert(`✅ Successfully imported ${subscribers.length} subscribers!`);
-      fetchSubscribers(); // Refresh the list
-
-      // Reset file input
-      e.target.value = '';
-    } catch (error) {
-      console.error('❌ Error importing Excel:', error);
-      alert('❌ Error importing Excel file: ' + error.message);
-    }
+    reader.readAsArrayBuffer(file);
   };
 
-  reader.readAsArrayBuffer(file);
-};
   const filteredSubscribers = subscribers.filter(sub => {
     const matchesSearch = sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         sub.phone.includes(searchTerm) ||
-                         sub.address.toLowerCase().includes(searchTerm.toLowerCase());
+                         sub.mobile.includes(searchTerm) ||
+                         sub.subscriber_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         sub.area.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesArea = filterArea === 'all' || sub.area === filterArea;
     const matchesFee = filterFeeRange === 'all' ||
                        (filterFeeRange === 'low' && sub.monthly_fee < 600) ||
@@ -277,7 +288,7 @@ const handleFileUpload = async (e) => {
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">Cable Subscriber Management</h1>
-          <p className="text-gray-600">Manage your local area broadband customers - Powered by Think and Break Company</p>
+          <p className="text-gray-600">Manage your local area broadband customers - Powered by Supabase</p>
         </div>
 
         {/* Stats Cards */}
@@ -319,7 +330,7 @@ const handleFileUpload = async (e) => {
                 <Search className="absolute left-3 top-3 text-gray-400" size={20} />
                 <input
                   type="text"
-                  placeholder="Search by name, phone, or address..."
+                  placeholder="Search by name, mobile, code, or area..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -356,6 +367,7 @@ const handleFileUpload = async (e) => {
 
 {/* Add and Import Buttons */}
 <div className="mb-6 flex gap-4 flex-wrap">
+
   <button
     onClick={() => setShowForm(!showForm)}
     className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
@@ -365,7 +377,8 @@ const handleFileUpload = async (e) => {
   </button>
 
   <label className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors cursor-pointer">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
       <polyline points="17 8 12 3 7 8"></polyline>
       <line x1="12" y1="3" x2="12" y2="15"></line>
@@ -379,19 +392,23 @@ const handleFileUpload = async (e) => {
     />
   </label>
 
-
-    href="data:text/csv;charset=utf-8,Name,Phone,Area,Address,Monthly Fee,Connection Date,Status%0ARajesh Kumar,9876543210,Sector A,House 101,500,2024-01-15,active%0APriya Sharma,9876543211,Sector B,Flat 202,750,2024-02-20,active"
+  {/* ✅ Download Template */}
+  <a
+    href="data:text/csv;charset=utf-8,Subscriber_Id,Name,Mobile,Area,Address,Monthly%20Fee,Connection%20Date,Status%0A-001,Rajesh Kumar,9876543210,Sector A,House 101,500,2024-01-15,active"
     download="subscriber_template.csv"
     className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
   >
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
       <polyline points="7 10 12 15 17 10"></polyline>
       <line x1="12" y1="15" x2="12" y2="3"></line>
     </svg>
     Download Template
   </a>
+
 </div>
+
 
         {/* Add/Edit Form */}
         {showForm && (
@@ -400,79 +417,88 @@ const handleFileUpload = async (e) => {
               {editingId ? 'Edit Subscriber' : 'Add New Subscriber'}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* Subscriber Code */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Subscriber Code
+                  <span className="text-gray-500 text-xs ml-2">(Auto-generated if empty)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.subscriber_code}
+                  onChange={(e) => setFormData({...formData, subscriber_code: e.target.value.toUpperCase()})}
+                  placeholder="SUB-20240116-001"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  placeholder="Rajesh Kumar"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Mobile */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile *</label>
                 <input
                   type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({...formData, mobile: e.target.value})}
+                  placeholder="9876543210"
+                  maxLength="10"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Area */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Area *</label>
                 <input
                   type="text"
                   value={formData.area}
                   onChange={(e) => setFormData({...formData, area: e.target.value})}
+                  placeholder="Sector A"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Service */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Service Provider *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Service *</label>
                 <select
-                  value={formData.service_provider}
-                  onChange={(e) =>
-                    setFormData({ ...formData, service_provider: e.target.value })
-                  }
+                  value={formData.service}
+                  onChange={(e) => setFormData({...formData, service: e.target.value})}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">Select provider</option>
-                  <option value="Asianet">Asianet</option>
-                  <option value="KCCL">KCCL</option>
-                  <option value="BSNL">BSNL</option>
-                  <option value="KFoN">KFoN</option>
+                  <option value="">Select Service</option>
+                  <option value="Cable TV">Cable TV</option>
+                  <option value="Broadband">Broadband</option>
+                  <option value="Cable TV + Broadband">Cable TV + Broadband</option>
+                  <option value="OTT Package">OTT Package</option>
                 </select>
               </div>
 
+              {/* Monthly Fee */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee (₹) *</label>
                 <input
                   type="number"
                   value={formData.monthly_fee}
                   onChange={(e) => setFormData({...formData, monthly_fee: e.target.value})}
+                  placeholder="500"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Connection Date *</label>
-                <input
-                  type="date"
-                  value={formData.connection_date}
-                  onChange={(e) => setFormData({...formData, connection_date: e.target.value})}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+
+              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
                 <select
@@ -482,9 +508,11 @@ const handleFileUpload = async (e) => {
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
+                  <option value="suspended">Suspended</option>
                 </select>
               </div>
             </div>
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleSubmit}
@@ -508,11 +536,11 @@ const handleFileUpload = async (e) => {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mobile</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Address</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monthly Fee</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -521,28 +549,38 @@ const handleFileUpload = async (e) => {
               <tbody className="divide-y divide-gray-200">
                 {filteredSubscribers.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
                       No subscribers found. Add your first subscriber to get started!
                     </td>
                   </tr>
                 ) : (
                   filteredSubscribers.map(subscriber => (
                     <tr key={subscriber.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 text-sm">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+                          {subscriber.subscriber_code || 'N/A'}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{subscriber.name}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{subscriber.phone}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{subscriber.mobile}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">
                         <div className="flex items-center gap-1">
                           <MapPin size={14} className="text-gray-400" />
                           {subscriber.area}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{subscriber.address}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600"> {subscriber.service_provider}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
+                          {subscriber.service}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{subscriber.monthly_fee}</td>
                       <td className="px-6 py-4 text-sm">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                           subscriber.status === 'active'
                             ? 'bg-green-100 text-green-800'
+                            : subscriber.status === 'suspended'
+                            ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
                         }`}>
                           {subscriber.status}
@@ -553,12 +591,14 @@ const handleFileUpload = async (e) => {
                           <button
                             onClick={() => handleEdit(subscriber)}
                             className="text-blue-600 hover:text-blue-800"
+                            title="Edit"
                           >
                             <Edit2 size={18} />
                           </button>
                           <button
                             onClick={() => handleDelete(subscriber.id)}
                             className="text-red-600 hover:text-red-800"
+                            title="Delete"
                           >
                             <Trash2 size={18} />
                           </button>

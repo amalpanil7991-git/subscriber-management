@@ -1,25 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Edit2, Trash2, Users, IndianRupee, MapPin } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Users, IndianRupee, MapPin, Filter, DollarSign, Calendar, Building2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import * as XLSX from 'xlsx';
 
 function App() {
+  // State for subscribers and loading
   const [subscribers, setSubscribers] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // State for home page filters
+  const [selectedService, setSelectedService] = useState('');
+  const [selectedServiceProvider, setSelectedServiceProvider] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [showMainView, setShowMainView] = useState(false);
+
+  // State for form
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  // State for search and filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterArea, setFilterArea] = useState('all');
-  const [filterFeeRange, setFilterFeeRange] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  // State for finance modal
+  const [showFinanceModal, setShowFinanceModal] = useState(false);
+  const [selectedPaymentMode, setSelectedPaymentMode] = useState('both');
 
   const [formData, setFormData] = useState({
     subscriber_code: '',
     name: '',
     mobile: '',
     area: '',
+    address: '',
     service: '',
+    service_provider: '',
     monthly_fee: '',
-    status: 'active'
+    connection_date: '',
+    status: 'active',
+    billing_year: '',
+    billing_month: '',
+    payment_mode: ''
   });
 
   // Load subscribers from Supabase
@@ -45,16 +67,50 @@ function App() {
     }
   };
 
-  const areas = ['all', ...new Set(subscribers.map(s => s.area))];
+  // Generate years array (current year to 10 years back)
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 11 }, (_, i) => currentYear - i);
+
+  const months = [
+    { value: '01', label: 'January' },
+    { value: '02', label: 'February' },
+    { value: '03', label: 'March' },
+    { value: '04', label: 'April' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'June' },
+    { value: '07', label: 'July' },
+    { value: '08', label: 'August' },
+    { value: '09', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' }
+  ];
+
+  // Handle home page filter submission
+  const handleFilterSubmit = () => {
+    if (!selectedService || !selectedServiceProvider || !selectedYear || !selectedMonth) {
+      alert('Please select all filters: Service, Service Provider, Year, and Month');
+      return;
+    }
+    setShowMainView(true);
+  };
+
+  // Reset filters and go back to home
+  const handleBackToHome = () => {
+    setShowMainView(false);
+    setSelectedService('');
+    setSelectedServiceProvider('');
+    setSelectedYear('');
+    setSelectedMonth('');
+  };
 
   const handleSubmit = async () => {
-    // ✅ FIXED: Correct field names
-    if (!formData.name || !formData.mobile || !formData.area || !formData.service || !formData.monthly_fee) {
+    if (!formData.name || !formData.mobile || !formData.area || !formData.service || !formData.service_provider || !formData.monthly_fee) {
       alert('Please fill all required fields');
       return;
     }
 
-    // ✅ FIXED: 10-digit mobile number validation
+    // 10-digit mobile number validation
     const phoneRegex = /^[0-9]{10}$/;
     if (!phoneRegex.test(formData.mobile)) {
       alert('Mobile number must be exactly 10 digits');
@@ -62,7 +118,7 @@ function App() {
     }
 
     try {
-      // ✅ Auto-generate subscriber code if not provided
+      // Auto-generate subscriber code if not provided
       let subscriberCode = formData.subscriber_code;
 
       if (!subscriberCode) {
@@ -77,7 +133,7 @@ function App() {
       }
 
       if (editingId) {
-        // ✅ FIXED: Update with correct field names
+        // Update existing subscriber
         const { error } = await supabase
           .from('subscribers')
           .update({
@@ -85,9 +141,15 @@ function App() {
             name: formData.name,
             mobile: formData.mobile,
             area: formData.area,
+            address: formData.address,
             service: formData.service,
+            service_provider: formData.service_provider,
             monthly_fee: parseFloat(formData.monthly_fee),
+            connection_date: formData.connection_date,
             status: formData.status,
+            billing_year: formData.billing_year || selectedYear,
+            billing_month: formData.billing_month || selectedMonth,
+            payment_mode: formData.payment_mode,
             last_edited_at: new Date().toISOString(),
             last_edited_by: 'user@example.com'
           })
@@ -96,7 +158,7 @@ function App() {
         if (error) throw error;
         alert('Subscriber updated successfully!');
       } else {
-        // ✅ FIXED: Insert with correct field names
+        // Add new subscriber
         const { error } = await supabase
           .from('subscribers')
           .insert([{
@@ -104,9 +166,15 @@ function App() {
             name: formData.name,
             mobile: formData.mobile,
             area: formData.area,
+            address: formData.address,
             service: formData.service,
+            service_provider: formData.service_provider,
             monthly_fee: parseFloat(formData.monthly_fee),
+            connection_date: formData.connection_date || new Date().toISOString().split('T')[0],
             status: formData.status,
+            billing_year: formData.billing_year || selectedYear,
+            billing_month: formData.billing_month || selectedMonth,
+            payment_mode: formData.payment_mode,
             created_by: 'user@example.com'
           }]);
 
@@ -128,9 +196,15 @@ function App() {
       name: '',
       mobile: '',
       area: '',
+      address: '',
       service: '',
+      service_provider: '',
       monthly_fee: '',
-      status: 'active'
+      connection_date: '',
+      status: 'active',
+      billing_year: '',
+      billing_month: '',
+      payment_mode: ''
     });
     setShowForm(false);
     setEditingId(null);
@@ -142,9 +216,15 @@ function App() {
       name: subscriber.name,
       mobile: subscriber.mobile,
       area: subscriber.area,
+      address: subscriber.address || '',
       service: subscriber.service,
+      service_provider: subscriber.service_provider,
       monthly_fee: subscriber.monthly_fee,
-      status: subscriber.status
+      connection_date: subscriber.connection_date || '',
+      status: subscriber.status,
+      billing_year: subscriber.billing_year || '',
+      billing_month: subscriber.billing_month || '',
+      payment_mode: subscriber.payment_mode || ''
     });
     setEditingId(subscriber.id);
     setShowForm(true);
@@ -187,25 +267,24 @@ function App() {
 
         console.log('📊 Parsed Excel data:', jsonData);
 
-        // ✅ FIXED: Transform and validate data with correct field names
-        const subscribers = jsonData.map((row, index) => {
+        // Transform and validate data
+        const newSubscribers = jsonData.map((row, index) => {
           const subscriber_code = row['Subscriber Code'] || row.subscriber_code || row.Code || '';
-          const name = row.Name || row.name || row.NAME || '';
-          const mobile = String(row.Mobile || row.mobile || row.MOBILE || row.Phone || row.phone || '');
-          const area = row.Area || row.area || row.AREA || '';
-          const service = row.Service || row.service || row.SERVICE || '';
-          const monthly_fee = parseFloat(
-            row['Monthly Fee'] ||
-            row.monthly_fee ||
-            row.MONTHLY_FEE ||
-            row.Fee ||
-            row.fee ||
-            0
-          );
-          const status = (row.Status || row.status || row.STATUS || 'active').toLowerCase();
+          const name = row.Name || row.name || row['Customer Name'] || '';
+          const mobile = String(row.Mobile || row.mobile || row['Contact Number'] || '');
+          const area = row.Area || row.area || row['Area / Location'] || '';
+          const address = row.Address || row.address || '';
+          const service = row.Service || row.service || '';
+          const service_provider = row['Service Provider'] || row.service_provider || '';
+          const monthly_fee = parseFloat(row['Monthly Fee'] || row.monthly_fee || 0);
+          const connection_date = row['Connection Date'] || row.connection_date || new Date().toISOString().split('T')[0];
+          const status = (row.Status || row.status || 'active').toLowerCase();
+          const billing_year = row['Billing Year'] || row.billing_year || selectedYear || currentYear.toString();
+          const billing_month = row['Billing Month'] || row.billing_month || selectedMonth || '';
+          const payment_mode = row['Payment Mode'] || row.payment_mode || '';
 
           // Validate required fields
-          if (!name || !mobile || !area || !service) {
+          if (!name || !mobile || !area || !service || !service_provider) {
             console.warn(`⚠️ Row ${index + 2} skipped: missing required fields`, row);
             return null;
           }
@@ -217,28 +296,34 @@ function App() {
             name: name.trim(),
             mobile: mobile.trim(),
             area: area.trim(),
+            address: address.trim(),
             service: service.trim(),
+            service_provider: service_provider.trim(),
             monthly_fee,
+            connection_date,
             status: ['active', 'inactive', 'suspended'].includes(status) ? status : 'active',
+            billing_year,
+            billing_month,
+            payment_mode: payment_mode.trim(),
             created_by: 'excel_import'
           };
         }).filter(Boolean);
 
-        if (subscribers.length === 0) {
+        if (newSubscribers.length === 0) {
           alert('❌ No valid data found in Excel file. Please check the format.');
           return;
         }
 
-        console.log(`✅ Validated ${subscribers.length} subscribers for import`);
+        console.log(`✅ Validated ${newSubscribers.length} subscribers for import`);
 
         // Insert into Supabase
         const { error } = await supabase
           .from('subscribers')
-          .insert(subscribers);
+          .insert(newSubscribers);
 
         if (error) throw error;
 
-        alert(`✅ Successfully imported ${subscribers.length} subscribers!`);
+        alert(`✅ Successfully imported ${newSubscribers.length} subscribers!`);
         fetchSubscribers();
 
         // Reset file input
@@ -252,23 +337,53 @@ function App() {
     reader.readAsArrayBuffer(file);
   };
 
+  // Filter subscribers based on home page selections and search
   const filteredSubscribers = subscribers.filter(sub => {
-    const matchesSearch = sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         sub.mobile.includes(searchTerm) ||
+    // Home page filters
+    const matchesService = selectedService === 'all' || sub.service === selectedService;
+    const matchesProvider = sub.service_provider === selectedServiceProvider;
+    const matchesYear = sub.billing_year === selectedYear;
+    const matchesMonth = sub.billing_month === selectedMonth;
+
+    // Search filter
+    const matchesSearch = sub.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         sub.mobile?.includes(searchTerm) ||
                          sub.subscriber_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         sub.area.toLowerCase().includes(searchTerm.toLowerCase());
+                         sub.area?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    // Area filter
     const matchesArea = filterArea === 'all' || sub.area === filterArea;
-    const matchesFee = filterFeeRange === 'all' ||
-                       (filterFeeRange === 'low' && sub.monthly_fee < 600) ||
-                       (filterFeeRange === 'medium' && sub.monthly_fee >= 600 && sub.monthly_fee < 900) ||
-                       (filterFeeRange === 'high' && sub.monthly_fee >= 900);
-    return matchesSearch && matchesArea && matchesFee;
+
+    // Status filter
+    const matchesStatus = filterStatus === 'all' || sub.status === filterStatus;
+
+    return matchesService && matchesProvider && matchesYear && matchesMonth &&
+           matchesSearch && matchesArea && matchesStatus;
   });
 
+  // Filter for finance modal based on payment mode
+  const financeFilteredSubscribers = filteredSubscribers.filter(sub => {
+    if (selectedPaymentMode === 'both') return true;
+    if (selectedPaymentMode === 'online') return sub.payment_mode?.toLowerCase() === 'online';
+    if (selectedPaymentMode === 'lco') return sub.payment_mode?.toLowerCase() === 'lco';
+    return true;
+  });
+
+  const areas = ['all', ...new Set(subscribers.map(s => s.area).filter(Boolean))];
+
   const stats = {
-    total: subscribers.length,
-    active: subscribers.filter(s => s.status === 'active').length,
-    totalRevenue: subscribers.filter(s => s.status === 'active').reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0)
+    total: filteredSubscribers.length,
+    active: filteredSubscribers.filter(s => s.status === 'active').length,
+    inactive: filteredSubscribers.filter(s => s.status === 'inactive').length,
+    suspended: filteredSubscribers.filter(s => s.status === 'suspended').length,
+    totalRevenue: filteredSubscribers.filter(s => s.status === 'active').reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0)
+  };
+
+  const financeStats = {
+    total: financeFilteredSubscribers.length,
+    totalRevenue: financeFilteredSubscribers.reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0),
+    onlineRevenue: financeFilteredSubscribers.filter(s => s.payment_mode?.toLowerCase() === 'online').reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0),
+    lcoRevenue: financeFilteredSubscribers.filter(s => s.payment_mode?.toLowerCase() === 'lco').reduce((sum, s) => sum + parseFloat(s.monthly_fee || 0), 0)
   };
 
   if (loading) {
@@ -282,17 +397,144 @@ function App() {
     );
   }
 
+  // HOME PAGE - Filter Selection
+  if (!showMainView) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-800 mb-2">Cable Subscriber Management</h1>
+            <p className="text-gray-600">Select filters to view subscriber data</p>
+          </div>
+
+          <div className="space-y-6">
+            {/* Service Selection */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Service Type *
+              </label>
+              <select
+                value={selectedService}
+                onChange={(e) => setSelectedService(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Service</option>
+                <option value="Internet">Internet</option>
+                <option value="Video">Video</option>
+                <option value="Internet + Video">Internet + Video</option>
+                <option value="all">All Services</option>
+              </select>
+            </div>
+
+            {/* Service Provider Selection */}
+            {selectedService && (
+              <div className="animate-fadeIn">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Service Provider *
+                </label>
+                <select
+                  value={selectedServiceProvider}
+                  onChange={(e) => setSelectedServiceProvider(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select Service Provider</option>
+                  <option value="Asianet">Asianet</option>
+                  <option value="KCCL">KCCL</option>
+                  <option value="KFoN">KFoN</option>
+                  <option value="BSNL">BSNL</option>
+                </select>
+              </div>
+            )}
+
+            {/* Year and Month Selection */}
+            {selectedServiceProvider && (
+              <div className="grid grid-cols-2 gap-4 animate-fadeIn">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Billing Year *
+                  </label>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select Year</option>
+                    {years.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Billing Month *
+                  </label>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select Month</option>
+                    {months.map(month => (
+                      <option key={month.value} value={month.value}>{month.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            {selectedService && selectedServiceProvider && selectedYear && selectedMonth && (
+              <button
+                onClick={handleFilterSubmit}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-lg transition-colors shadow-lg hover:shadow-xl animate-fadeIn"
+              >
+                View Subscribers
+              </button>
+            )}
+          </div>
+
+          <div className="mt-8 text-center text-sm text-gray-500">
+            <p>Total Subscribers in Database: {subscribers.length}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MAIN VIEW - Subscriber List
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
+        {/* Header with Back Button and Finance Button */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">Cable Subscriber Management</h1>
-          <p className="text-gray-600">Manage your local area broadband customers - Powered by Supabase</p>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Subscriber Management</h1>
+              <p className="text-gray-600">
+                {selectedService === 'all' ? 'All Services' : selectedService} - {selectedServiceProvider} - {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFinanceModal(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <IndianRupee size={20} />
+                Monthly Finance
+              </button>
+              <button
+                onClick={handleBackToHome}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition-colors"
+              >
+                ← Back to Home
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -305,10 +547,19 @@ function App() {
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Active Subscribers</p>
+                <p className="text-gray-600 text-sm">Active</p>
                 <p className="text-3xl font-bold text-green-600">{stats.active}</p>
               </div>
               <Users className="text-green-500" size={40} />
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-600 text-sm">Inactive</p>
+                <p className="text-3xl font-bold text-red-600">{stats.inactive}</p>
+              </div>
+              <Users className="text-red-500" size={40} />
             </div>
           </div>
           <div className="bg-white rounded-lg shadow-sm p-6">
@@ -322,15 +573,15 @@ function App() {
           </div>
         </div>
 
-        {/* Filters and Search */}
+        {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-gray-400" size={20} />
                 <input
                   type="text"
-                  placeholder="Search by name, mobile, code, or area..."
+                  placeholder="Search by name, mobile, code..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -352,63 +603,56 @@ function App() {
             </div>
             <div>
               <select
-                value={filterFeeRange}
-                onChange={(e) => setFilterFeeRange(e.target.value)}
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="all">All Plans</option>
-                <option value="low">Budget (&lt; ₹600)</option>
-                <option value="medium">Standard (₹600-900)</option>
-                <option value="high">Premium (₹900+)</option>
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="suspended">Suspended</option>
               </select>
             </div>
           </div>
         </div>
+{/* Action Buttons */}
+        <div className="mb-6 flex gap-4 flex-wrap">
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Plus size={20} />
+            Add New Subscriber
+          </button>
 
-{/* Add and Import Buttons */}
-<div className="mb-6 flex gap-4 flex-wrap">
+          <label className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Import from Excel
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </label>
 
-  <button
-    onClick={() => setShowForm(!showForm)}
-    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
-  >
-    <Plus size={20} />
-    Add New Subscriber
-  </button>
-
-  <label className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors cursor-pointer">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-      <polyline points="17 8 12 3 7 8"></polyline>
-      <line x1="12" y1="3" x2="12" y2="15"></line>
-    </svg>
-    Import from Excel
-    <input
-      type="file"
-      accept=".xlsx,.xls"
-      onChange={handleFileUpload}
-      className="hidden"
-    />
-  </label>
-
-  {/* ✅ Download Template */}
-  <a
-    href="data:text/csv;charset=utf-8,Subscriber_Id,Name,Mobile,Area,Address,Monthly%20Fee,Connection%20Date,Status%0A-001,Rajesh Kumar,9876543210,Sector A,House 101,500,2024-01-15,active"
-    download="subscriber_template.csv"
-    className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
-  >
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-      <polyline points="7 10 12 15 17 10"></polyline>
-      <line x1="12" y1="15" x2="12" y2="3"></line>
-    </svg>
-    Download Template
-  </a>
-
-</div>
-
+           <a
+            href="data:text/csv;charset=utf-8,Subscriber Code,Customer Name,Contact Number,Area,Address,Service,Service Provider,Monthly Fee,Connection Date,Status,Billing Year,Billing Month,Payment Mode%0ASUB-001,Rajesh Kumar,9876543210,Sector A,House 101,Internet,Asianet,500,2024-01-15,active,2024,01,Online%0ASUB-002,Priya Sharma,9876543211,Sector B,Flat 202,Video,KCCL,750,2024-02-20,active,2024,02,LCO"
+            download="subscriber_template.csv"
+            className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download Template
+          </a>
+        </div>
 
         {/* Add/Edit Form */}
         {showForm && (
@@ -416,13 +660,11 @@ function App() {
             <h2 className="text-xl font-bold text-gray-800 mb-4">
               {editingId ? 'Edit Subscriber' : 'Add New Subscriber'}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-              {/* Subscriber Code */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Subscriber Code
-                  <span className="text-gray-500 text-xs ml-2">(Auto-generated if empty)</span>
+                  <span className="text-gray-500 text-xs ml-2">(Auto-generated)</span>
                 </label>
                 <input
                   type="text"
@@ -433,9 +675,8 @@ function App() {
                 />
               </div>
 
-              {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -445,9 +686,8 @@ function App() {
                 />
               </div>
 
-              {/* Mobile */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
                 <input
                   type="tel"
                   value={formData.mobile}
@@ -458,9 +698,8 @@ function App() {
                 />
               </div>
 
-              {/* Area */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Area *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Area / Location *</label>
                 <input
                   type="text"
                   value={formData.area}
@@ -470,7 +709,17 @@ function App() {
                 />
               </div>
 
-              {/* Service */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  placeholder="House 101, Street 1"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Service *</label>
                 <select
@@ -479,14 +728,27 @@ function App() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select Service</option>
-                  <option value="Cable TV">Cable TV</option>
-                  <option value="Broadband">Broadband</option>
-                  <option value="Cable TV + Broadband">Cable TV + Broadband</option>
-                  <option value="OTT Package">OTT Package</option>
+                  <option value="Internet">Internet</option>
+                  <option value="Video">Video</option>
+                  <option value="Internet + Video">Internet + Video</option>
                 </select>
               </div>
 
-              {/* Monthly Fee */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Service Provider *</label>
+                <select
+                  value={formData.service_provider}
+                  onChange={(e) => setFormData({...formData, service_provider: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Provider</option>
+                  <option value="Asianet">Asianet</option>
+                  <option value="KCCL">KCCL</option>
+                  <option value="KFoN">KFoN</option>
+                  <option value="BSNL">BSNL</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Fee (₹) *</label>
                 <input
@@ -498,7 +760,29 @@ function App() {
                 />
               </div>
 
-              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Connection Date</label>
+                <input
+                  type="date"
+                  value={formData.connection_date}
+                  onChange={(e) => setFormData({...formData, connection_date: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Mode</label>
+                <select
+                  value={formData.payment_mode}
+                  onChange={(e) => setFormData({...formData, payment_mode: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Payment Mode</option>
+                  <option value="Online">Online</option>
+                  <option value="LCO">LCO</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
                 <select
@@ -530,7 +814,7 @@ function App() {
           </div>
         )}
 
-        {/* Subscribers List */}
+        {/* Subscribers Table */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -540,7 +824,6 @@ function App() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mobile</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Area</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Service</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monthly Fee</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -549,8 +832,8 @@ function App() {
               <tbody className="divide-y divide-gray-200">
                 {filteredSubscribers.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
-                      No subscribers found. Add your first subscriber to get started!
+                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                      No subscribers found for the selected filters.
                     </td>
                   </tr>
                 ) : (
@@ -568,11 +851,6 @@ function App() {
                           <MapPin size={14} className="text-gray-400" />
                           {subscriber.area}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
-                          {subscriber.service}
-                        </span>
                       </td>
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{subscriber.monthly_fee}</td>
                       <td className="px-6 py-4 text-sm">
@@ -613,9 +891,110 @@ function App() {
         </div>
 
         <div className="mt-6 text-center text-sm text-gray-500">
-          Showing {filteredSubscribers.length} of {subscribers.length} subscribers
+          Showing {filteredSubscribers.length} subscribers
         </div>
       </div>
+
+      {/* Finance Modal */}
+      {showFinanceModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">Monthly Finance Status</h2>
+                <button
+                  onClick={() => setShowFinanceModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
+
+              {/* Payment Mode Filter */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Filter by Payment Mode
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSelectedPaymentMode('both')}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                      selectedPaymentMode === 'both'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Both
+                  </button>
+                  <button
+                    onClick={() => setSelectedPaymentMode('online')}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                      selectedPaymentMode === 'online'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Online Purchase
+                  </button>
+                  <button
+                    onClick={() => setSelectedPaymentMode('lco')}
+                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                      selectedPaymentMode === 'lco'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    LCO Credits
+                  </button>
+                </div>
+              </div>
+
+              {/* Finance Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600 mb-1">Total Subscribers</p>
+                  <p className="text-2xl font-bold text-blue-600">{financeStats.total}</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600 mb-1">Online Revenue</p>
+                  <p className="text-2xl font-bold text-green-600">₹{financeStats.onlineRevenue.toFixed(2)}</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-600 mb-1">LCO Revenue</p>
+                  <p className="text-2xl font-bold text-purple-600">₹{financeStats.lcoRevenue.toFixed(2)}</p>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50 rounded-lg p-6">
+                <p className="text-sm text-gray-600 mb-2">Total Revenue</p>
+                <p className="text-4xl font-bold text-indigo-600">₹{financeStats.totalRevenue.toFixed(2)}</p>
+              </div>
+
+              {/* Subscriber List */}
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">Subscribers ({financeStats.total})</h3>
+                <div className="max-h-64 overflow-y-auto border rounded-lg">
+                  {financeFilteredSubscribers.map(sub => (
+                    <div key={sub.id} className="p-3 border-b hover:bg-gray-50 flex justify-between items-center">
+                      <div>
+                        <p className="font-medium text-gray-800">{sub.name}</p>
+                        <p className="text-sm text-gray-600">{sub.subscriber_code} - {sub.area}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-gray-800">₹{sub.monthly_fee}</p>
+                        <p className="text-xs text-gray-500">{sub.payment_mode || 'N/A'}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
